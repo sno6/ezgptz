@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
 import random
-
+import wandb
 
 class MathDataset(Dataset):
     def __init__(self):
@@ -93,34 +93,39 @@ class MathDataset(Dataset):
 
 
 class TrainerConfig:
-    epochs = 100
+    epochs = 120
     batch_size = 32
-
-    embedding_size = 128
     learning_rate = 3e-4
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    print_loss_every = 10
 
 
 class Trainer:
-    def __init__(self, model, dataset, config):
+    """
+    Trainer is a generic model trainer that, given a model and a dataset,
+    will train and test the model until a sufficiently low loss is reached.
+    """
+    def __init__(self, model, train_dataset, test_dataset, config):
         self.model = model
         self.config = config
-        self.dataloader = DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+        self.train_data = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+        self.test_data = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
         self.optimizer = Adam(model.parameters(), lr=config.learning_rate)
 
     def train(self):
         self.model.train()
 
         for epoch in range(self.config.epochs):
-            for i, (batch_x, batch_y) in enumerate(self.dataloader):
+            for i, (batch_x, batch_y) in enumerate(self.train_data):
                 with torch.set_grad_enabled(True):
                     y_hat, loss = self.model(batch_x, batch_y)
-                    if i % 10 == 0:
+                    if i % self.config.print_loss_every == 0:
                         print("Loss: ", loss)
+
+                wandb.log({"loss": loss})
 
                 self.model.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+    def test(self):
+        self.model.eval()
