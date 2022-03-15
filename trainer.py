@@ -4,6 +4,7 @@ from torch.optim import Adam
 import random
 import wandb
 
+
 class MathDataset(Dataset):
     def __init__(self):
         super().__init__()
@@ -96,7 +97,16 @@ class TrainerConfig:
     epochs = 120
     batch_size = 32
     learning_rate = 3e-4
+
     print_loss_every = 10
+    test_every_n_epochs = 10
+
+    # Log to wandb.
+    logging = True
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
 class Trainer:
@@ -121,11 +131,29 @@ class Trainer:
                     if i % self.config.print_loss_every == 0:
                         print("Loss: ", loss)
 
-                wandb.log({"loss": loss})
+                if self.config.logging:
+                    wandb.log({"loss": loss})
 
                 self.model.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
+            if epoch > 0 and epoch % self.config.test_every_n_epochs == 0:
+                self.test()
+
     def test(self):
         self.model.eval()
+
+        if not self.test_data or len(self.test_data) == 0:
+            return
+
+        av_loss = 0
+        for i, (batch_x, batch_y) in enumerate(self.test_data):
+            _, loss = self.model(batch_x, batch_y)
+            av_loss += loss
+
+        av_loss /= len(self.test_data)
+        print(f"Average test loss: {av_loss}")
+
+        if self.config.logging:
+            wandb.log({"test_loss": av_loss})

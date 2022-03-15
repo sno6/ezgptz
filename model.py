@@ -8,6 +8,7 @@ class GPTConfig:
     n_blocks = 2
     n_heads = 4
 
+    max_seq_len = 5
     vocab_len = None
 
     def __init__(self, **kwargs):
@@ -17,7 +18,7 @@ class GPTConfig:
 
 class MultiheadSelfAttention(nn.Module):
     """
-    Shamelessly ripped from Karpathy.
+    Shamelessly ripped from lord Karpathy.
     """
     def __init__(self, config):
         super().__init__()
@@ -67,14 +68,15 @@ class GPT(nn.Module):
 
         self.embedding = nn.Embedding(config.vocab_len, config.embed_dim)
         self.blocks = nn.Sequential(*[TransformerBlock(config) for _ in range(config.n_blocks)])
-        self.mlp = nn.Linear(config.embed_dim * 5, config.vocab_len)
+        self.mlp = nn.Linear(config.embed_dim * config.max_seq_len, config.vocab_len)
 
     def forward(self, x, y=None):
         x = x.squeeze(0)
 
         x = self.embedding(x)
         y_hat = self.blocks(x)
-        y_hat = self.mlp(y_hat.view(-1, y_hat.size(1) * y_hat.size(2)).contiguous())
+        y_hat = y_hat.view(-1, y_hat.size(1) * y_hat.size(2)).contiguous()
+        y_hat = self.mlp(y_hat)
 
         loss = None
         if y is not None:
