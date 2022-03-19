@@ -1,112 +1,66 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
-import random
+
 import wandb
+import string
+import ftfy
 
 
-class MathDataset(Dataset):
-    def __init__(self):
+class SentenceDataset(Dataset):
+    def __init__(self, seq_len, data_file):
         super().__init__()
 
-        self.vocab = {
-            "0": 0,
-            "1": 1,
-            "2": 2,
-            "3": 3,
-            "4": 4,
-            "5": 5,
-            "6": 6,
-            "7": 7,
-            "8": 8,
-            "9": 9,
-            "+": 10,
-            "=": 11,
-            "#": 12,  # Mask char.
-        }
+        self.data = []
+        self.vocab = {'<unk>': 0}
+        self.seq_len = seq_len
 
-        self.items = [self.gen_item() for _ in range(self.__len__())]
+        # Pull data from the given dataset file, and run the following
+        # preprocessing rules:
+        #
+        # 1. Lowercase all text.
+        # 2. Remove encoding error using ftfy.
+        # 3. Remove punctuation and formatters e.g '\t' '\n'.
+        # 4. Split on words and build vocab.
+        self.load_and_preprocess(data_file)
 
-    def vocab_len(self):
-        return len(self.vocab)
+    def load_and_preprocess(self, data_file):
+        with open(data_file, 'r') as f:
+            raw_data = f.read().lower()
+            raw_data = ftfy.fix_text(raw_data)
 
-    def problem_to_idx(self, problem):
-        idx_list = []
-        for char in problem:
-            if char == " ":
-                continue
-            idx_list.append(self.char_to_idx(char))
-        return idx_list
+            # Let's get rid of punctuation to simplify things a little.
+            seq_to_remove = [w for w in string.punctuation]
+            for w in seq_to_remove:
+                raw_data = raw_data.replace(w, '')
+            for w in ['\t', '\n']:
+                raw_data = raw_data.replace(w, ' ')
 
-    def char_to_idx(self, char):
-        return self.vocab[char]
+            # Our dataset is now a long list of words.
+            self.data = raw_data.split(' ')
 
-    def idx_to_char(self, idx):
-        for char, i in self.vocab:
-            if idx == i:
-                return char
+            # Add the word to our vocab if it doesn't already exist.
+            for word in self.data:
+                if word not in self.vocab:
+                    self.vocab[word] = len(self.vocab)
 
-        return None
+    def get_vocab(self):
+        return self.vocab
+
+    def words_to_idx(self, words):
+        return [self.word_to_idx(w) for w in words]
+
+    def word_to_idx(self, w):
+        return self.vocab.get(w, self.vocab['<unk>'])
 
     def __len__(self):
-        return 1000
+        return len(self.data) - self.seq_len
 
     def __getitem__(self, idx):
-        return self.items[idx]
+        x = self.words_to_idx(self.data[idx:idx + self.seq_len])
+        y = self.words_to_idx(self.data[idx+1:idx+1 + self.seq_len])
 
-    def gen_item(self):
-        """
-            Firstly we generate some equation such as "5 + 5 = 10".
-            Then we build n (max=3) examples from the equation. e.g
-
-            x: [5 + 5] y: [=]
-            x: [5 + 5 =] y: [1]
-            x: [5 + 5 = 1] y: [0]
-
-            We also pad x with # in all positions that it shouldn't
-            attend, so it doesn't look ahead to cheat. This is known as masking.
-        """
-        digit_choices = [i for i in range(1, 10)]
-
-        n1 = random.choice(digit_choices)
-        n2 = random.choice(digit_choices)
-        n_sum = str(n1 + n2)
-
-        problem = self.problem_to_idx("{} + {} = {}".format(n1, n2, n_sum.rjust(2, '0')))
-
-        x = []
-        y = []
-        for (i, idx) in enumerate(problem[::-1]):
-            x_temp = problem[:len(problem) - i - 1]
-            for _ in range(i):
-                x_temp.append(self.char_to_idx("#"))  # Add a mask.
-
-            x.append(x_temp)
-            y.append([problem[len(problem)-i-1]])
-
-            if idx == self.char_to_idx("="):
-                break
-
-        lucky_dip = random.randint(0, len(x)-1)
-        x_tensor = torch.tensor(x[lucky_dip], dtype=torch.long)
-        y_tensor = torch.tensor(y[lucky_dip], dtype=torch.long)
-        return x_tensor, y_tensor
-
-
-class TrainerConfig:
-    epochs = 120
-    batch_size = 32
-    learning_rate = 3e-4
-
-    print_loss_every = 10
-    test_every_n_epochs = 10
-
-    # Log to wandb.
-    logging = True
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+        return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
 
 
 class Trainer:
@@ -114,7 +68,7 @@ class Trainer:
     Trainer is a generic model trainer that, given a model and a dataset,
     will train and test the model until a sufficiently low loss is reached.
     """
-    def __init__(self, model, train_dataset, test_dataset, config):
+    def __init__(self, model, config, train_dataset, test_dataset):
         self.model = model
         self.config = config
         self.train_data = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
@@ -128,7 +82,7 @@ class Trainer:
             for i, (batch_x, batch_y) in enumerate(self.train_data):
                 with torch.set_grad_enabled(True):
                     y_hat, loss = self.model(batch_x, batch_y)
-                    if i % self.config.print_loss_every == 0:
+                    if i % self.config.print_loss_every_iter == 0:
                         print("Loss: ", loss)
 
                 if self.config.logging:
