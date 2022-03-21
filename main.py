@@ -1,8 +1,10 @@
+import torch
+
 from model import GPT, Config
 from trainer import SentenceDataset, Trainer
 
 if __name__ == '__main__':
-    config = Config()
+    config = Config(logging=False)
 
     # Set up wandb for model performance logging.
     if config.logging:
@@ -14,9 +16,14 @@ if __name__ == '__main__':
             "batch_size": config.batch_size,
         }
 
-    train_dataset = SentenceDataset(seq_len=config.seq_len, data_file='./data/random_example.txt')
-    test_dataset = SentenceDataset(seq_len=config.seq_len, data_file='./data/random_example.txt')
+    device = 'cpu'
+    if torch.cuda.is_available():
+        device = torch.cuda.current_device()
 
-    model = GPT(config, vocab_len=len(train_dataset.get_vocab()))
-    trainer = Trainer(model, config, train_dataset, train_dataset)
+    print(f'Running model on device: {device}')
+
+    train_dataset = SentenceDataset(seq_len=config.seq_len, data_file='./data/training.txt', device=device)
+
+    model = GPT(config, vocab_len=len(train_dataset.get_vocab())).to(device)
+    trainer = Trainer(model, config, train_dataset, None)
     trainer.train()

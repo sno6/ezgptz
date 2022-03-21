@@ -10,15 +10,15 @@ class Config:
     """
 
     # Model configuration.
-    embed_dim = 128
-    n_blocks = 1
-    n_heads = 1
-    seq_len = 5
+    embed_dim = 512
+    n_blocks = 8
+    n_heads = 8
+    seq_len = 128
 
     # Trainer configuration.
-    epochs = 1000
-    batch_size = 32
-    learning_rate = 3e-4
+    epochs = 100
+    batch_size = 256
+    learning_rate = 1e-3
 
     print_loss_every_iter = 10
     test_every_n_epochs = 10
@@ -29,32 +29,6 @@ class Config:
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
-
-
-class PositionalEncoding(nn.Module):
-    """
-        Basically, we use sine and cosine waves at different frequencies
-        along the i (0->embed_dim) and p (0->sequence_len) to create a vector
-        that is unique with respect to its position in the sequence. Then we
-        sum our embedding with this new "unique for position p" vector, as it
-        has the same dims as our word embedding, in the hopes that the model
-        can learn that there is 'positional' meaning to this pattern.
-
-        TODO (sno6): Just replace this booshi with a learnable param.
-    """
-    def __init__(self, config):
-        super(PositionalEncoding, self).__init__()
-
-        pe = torch.zeros(config.seq_len, config.embed_dim)
-        position = torch.arange(0, config.seq_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, config.embed_dim, 2).float() * (-math.log(10000.0) / config.embed_dim))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x):
-        return x + self.pe[:x.size(0), :]
 
 
 class MultiheadSelfAttention(nn.Module):
@@ -69,6 +43,9 @@ class MultiheadSelfAttention(nn.Module):
         self.value = nn.Linear(config.embed_dim, config.embed_dim)
         self.proj = nn.Linear(config.embed_dim, config.embed_dim)
 
+        self.register_buffer("mask", torch.tril(torch.ones(config.seq_len, config.seq_len))
+                             .view(1, 1, config.seq_len, config.seq_len))
+
         self.n_heads = config.n_heads
 
     def forward(self, x):
@@ -81,9 +58,8 @@ class MultiheadSelfAttention(nn.Module):
 
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
+        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
-
-        # Mask here.
 
         y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
@@ -110,15 +86,16 @@ class GPT(nn.Module):
     def __init__(self, config, vocab_len):
         super().__init__()
 
-        self.positional = PositionalEncoding(config)
+        self.positional = nn.Parameter(torch.zeros(1, config.seq_len, config.embed_dim))
         self.embedding = nn.Embedding(vocab_len, config.embed_dim)
         self.blocks = nn.Sequential(*[TransformerBlock(config) for _ in range(config.n_blocks)])
         self.mlp = nn.Linear(config.embed_dim, vocab_len)
 
     def forward(self, x, y=None):
+        b, t = x.size()
+
         x = self.embedding(x)
-        # x = self.positional(x)
-        y_hat = self.blocks(x)
+        y_hat = self.blocks(x + self.positional[:, :t, :])
         y_hat = self.mlp(y_hat)
 
         loss = None

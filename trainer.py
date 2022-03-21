@@ -8,12 +8,13 @@ import ftfy
 
 
 class SentenceDataset(Dataset):
-    def __init__(self, seq_len, data_file):
+    def __init__(self, seq_len, data_file, device):
         super().__init__()
 
         self.data = []
         self.vocab = {'<unk>': 0}
         self.seq_len = seq_len
+        self.device = device
 
         # Pull data from the given dataset file, and run the following
         # preprocessing rules:
@@ -60,7 +61,10 @@ class SentenceDataset(Dataset):
         x = self.words_to_idx(self.data[idx:idx + self.seq_len])
         y = self.words_to_idx(self.data[idx+1:idx+1 + self.seq_len])
 
-        return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
+        return (
+            torch.tensor(x, dtype=torch.long).to(self.device),
+            torch.tensor(y, dtype=torch.long).to(self.device),
+        )
 
 
 class Trainer:
@@ -68,12 +72,15 @@ class Trainer:
     Trainer is a generic model trainer that, given a model and a dataset,
     will train and test the model until a sufficiently low loss is reached.
     """
-    def __init__(self, model, config, train_dataset, test_dataset):
+    def __init__(self, model, config, train_dataset, test_dataset=None):
         self.model = model
         self.config = config
         self.train_data = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-        self.test_data = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
         self.optimizer = Adam(model.parameters(), lr=config.learning_rate)
+
+        self.test_data = None
+        if test_dataset:
+            self.test_data = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
     def train(self):
         self.model.train()
@@ -92,8 +99,11 @@ class Trainer:
                 loss.backward()
                 self.optimizer.step()
 
-            if epoch > 0 and epoch % self.config.test_every_n_epochs == 0:
+            if self.test_data and epoch > 0 and epoch % self.config.test_every_n_epochs == 0:
                 self.test()
+
+            # Save a checkpoint at each epoch.
+            torch.save(self.model.state_dict(), f"chkpt-{epoch}.pt")
 
     def test(self):
         self.model.eval()
