@@ -1,3 +1,5 @@
+from typing import List
+
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
@@ -38,7 +40,9 @@ class SentenceDataset(Dataset):
                 raw_data = raw_data.replace(w, ' ')
 
             # Our dataset is now a long list of words.
-            self.data = raw_data.split(' ')
+            words = raw_data.split(' ')
+            words = [w for w in words if w not in ['']]
+            self.data = words
 
             # Add the word to our vocab if it doesn't already exist.
             for word in self.data:
@@ -48,8 +52,15 @@ class SentenceDataset(Dataset):
     def get_vocab(self):
         return self.vocab
 
-    def words_to_idx(self, words):
-        return [self.word_to_idx(w) for w in words]
+    def idx_to_word(self, word):
+        for (k, v) in enumerate(self.vocab):
+            if k == word:
+                return v
+        return None
+
+    def words_to_idx(self, words: List[str]):
+        w = [self.word_to_idx(w) for w in words]
+        return w
 
     def word_to_idx(self, w):
         return self.vocab.get(w, self.vocab['<unk>'])
@@ -103,7 +114,8 @@ class Trainer:
                 self.test()
 
             # Save a checkpoint at each epoch.
-            torch.save(self.model.state_dict(), f"chkpt-{epoch}.pt")
+            if epoch % self.config.save_chkpt_every_n_epochs == 0:
+                torch.save(self.model.state_dict(), f"chkpt-{epoch}.pt")
 
     def test(self):
         self.model.eval()

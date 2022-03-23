@@ -16,12 +16,13 @@ class Config:
     seq_len = 128
 
     # Trainer configuration.
-    epochs = 100
-    batch_size = 256
-    learning_rate = 1e-3
+    epochs = 16
+    batch_size = 128
+    learning_rate = 4e-4
 
     print_loss_every_iter = 10
     test_every_n_epochs = 10
+    save_chkpt_every_n_epochs = 5
 
     # Logging to wandb.
     logging = False
@@ -73,13 +74,17 @@ class TransformerBlock(nn.Module):
 
         self.attn = MultiheadSelfAttention(config)
         self.ln1 = nn.LayerNorm(config.embed_dim, config.embed_dim)
-        self.mlp = nn.Linear(config.embed_dim, config.embed_dim)
         self.ln2 = nn.LayerNorm(config.embed_dim, config.embed_dim)
+        self.mlp = nn.Sequential(
+            nn.Linear(config.embed_dim, 4 * config.embed_dim),
+            nn.GELU(),
+            nn.Linear(4 * config.embed_dim, config.embed_dim),
+        )
 
     def forward(self, x):
-        y_hat = self.ln1(x + self.attn(x))
-        y_hat = self.ln2(y_hat + self.mlp(y_hat))
-        return y_hat
+        x = x + self.attn(self.ln1(x))
+        x = x + self.mlp(self.ln2(x))
+        return x
 
 
 class GPT(nn.Module):
