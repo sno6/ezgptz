@@ -77,6 +77,8 @@ func handleEval(w http.ResponseWriter, seed string) {
 		return
 	}
 
+	fmt.Printf("Writing %v\n", buf.String())
+
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		log.Println(err.Error())
 	}
@@ -96,6 +98,10 @@ func main() {
 		done()
 		ctx, done = context.WithCancel(context.Background())
 
+		w.Header().Set("Access-Control-Allow-Origin",  "*")
+		w.Header().Set("Access-Control-Allowed-Methods",  "*")
+		w.Header().Set("Access-Control-Allow-Headers",  "*")
+
 		var events EventsList
 		if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
 			log.Println(err.Error())
@@ -110,6 +116,10 @@ func main() {
 	})
 
 	mux.HandleFunc("/eval", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin",  "*")
+		w.Header().Set("Access-Control-Allowed-Methods",  "*")
+		w.Header().Set("Access-Control-Allow-Headers",  "*")
+
 		type EvalReq struct {
 			Seed string `json:"seed"`
 		}

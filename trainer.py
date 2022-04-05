@@ -92,9 +92,9 @@ class Trainer:
 
             # Save a checkpoint at each epoch.
             if epoch % self.config.save_chkpt_every_n_epochs == 0:
-                fn = datetime.datetime.now().isoformat()
+                print("Writing to chkpt")
                 path = '/Users/farleyschaefer/Documents/projects/newco/engine/models'
-                torch.save(self.model.state_dict(), f"{path}/{fn}.pt")
+                torch.save(self.model.state_dict(), f"{path}/latest.pt")
 
     def test(self):
         self.model.eval()

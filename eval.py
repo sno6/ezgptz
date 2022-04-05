@@ -1,8 +1,6 @@
 import torch
 import json
 import argparse
-import glob
-import os
 
 from model import GPT, Config
 from trainer import EventDataset
@@ -23,10 +21,7 @@ if __name__ == '__main__':
     train_dataset = EventDataset(seq_len=config.seq_len, data_file='/Users/farleyschaefer/Documents/projects/newco/engine/data/training.json', device=device)
     model = GPT(config, vocab_len=len(train_dataset.get_vocab())).to(device)
 
-    checkpoints = glob.glob('/Users/farleyschaefer/Documents/projects/newco/engine/models/*.pt')
-    latest = max(checkpoints, key=os.path.getctime)
-
-    model.load_state_dict(torch.load(latest))
+    model.load_state_dict(torch.load("/Users/farleyschaefer/Documents/projects/newco/engine/models/latest.pt"))
     model.eval()
 
     seed = args["seed"].split(' ')

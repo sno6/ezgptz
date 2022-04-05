@@ -16,7 +16,7 @@ class Config:
     seq_len = 32
 
     # Trainer configuration.
-    epochs = 10
+    epochs = 200
     batch_size = 8
     learning_rate = 1e-4
 
