@@ -1,15 +1,13 @@
-from typing import List
-
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torch.optim import Adam
 
 import wandb
-import string
-import ftfy
+import json
+from typing import List
+import datetime
 
-
-class SentenceDataset(Dataset):
+class EventDataset(Dataset):
     def __init__(self, seq_len, data_file, device):
         super().__init__()
 
@@ -18,59 +16,38 @@ class SentenceDataset(Dataset):
         self.seq_len = seq_len
         self.device = device
 
-        # Pull data from the given dataset file, and run the following
-        # preprocessing rules:
-        #
-        # 1. Lowercase all text.
-        # 2. Remove encoding error using ftfy.
-        # 3. Remove punctuation and formatters e.g '\t' '\n'.
-        # 4. Split on words and build vocab.
         self.load_and_preprocess(data_file)
 
     def load_and_preprocess(self, data_file):
-        with open(data_file, 'r') as f:
-            raw_data = f.read().lower()
-            raw_data = ftfy.fix_text(raw_data)
+        with open(data_file, 'r', encoding='utf-8-sig') as f:
+            self.data = json.load(f)
 
-            # Let's get rid of punctuation to simplify things a little.
-            seq_to_remove = [w for w in string.punctuation]
-            for w in seq_to_remove:
-                raw_data = raw_data.replace(w, '')
-            for w in ['\t', '\n']:
-                raw_data = raw_data.replace(w, ' ')
-
-            # Our dataset is now a long list of words.
-            words = raw_data.split(' ')
-            words = [w for w in words if w not in ['']]
-            self.data = words
-
-            # Add the word to our vocab if it doesn't already exist.
-            for word in self.data:
-                if word not in self.vocab:
-                    self.vocab[word] = len(self.vocab)
+            for event in self.data:
+                event = str(event)
+                if not self.vocab.get(event):
+                    self.vocab[event] = len(self.vocab)
 
     def get_vocab(self):
         return self.vocab
 
-    def idx_to_word(self, word):
+    def idx_to_event(self, event):
         for (k, v) in enumerate(self.vocab):
-            if k == word:
+            if k == event:
                 return v
         return None
 
-    def words_to_idx(self, words: List[str]):
-        w = [self.word_to_idx(w) for w in words]
-        return w
+    def events_to_idx(self, events: List[str]):
+        return [self.event_to_idx(e) for e in events]
 
-    def word_to_idx(self, w):
-        return self.vocab.get(w, self.vocab['<unk>'])
+    def event_to_idx(self, e):
+        return self.vocab[str(e)]
 
     def __len__(self):
         return len(self.data) - self.seq_len
 
     def __getitem__(self, idx):
-        x = self.words_to_idx(self.data[idx:idx + self.seq_len])
-        y = self.words_to_idx(self.data[idx+1:idx+1 + self.seq_len])
+        x = self.events_to_idx(self.data[idx:idx + self.seq_len])
+        y = self.events_to_idx(self.data[idx+1:idx+1 + self.seq_len])
 
         return (
             torch.tensor(x, dtype=torch.long).to(self.device),
@@ -115,7 +92,9 @@ class Trainer:
 
             # Save a checkpoint at each epoch.
             if epoch % self.config.save_chkpt_every_n_epochs == 0:
-                torch.save(self.model.state_dict(), f"chkpt-{epoch}.pt")
+                fn = datetime.datetime.now().isoformat()
+                path = '/Users/farleyschaefer/Documents/projects/newco/engine/models'
+                torch.save(self.model.state_dict(), f"{path}/{fn}.pt")
 
     def test(self):
         self.model.eval()

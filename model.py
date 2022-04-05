@@ -13,16 +13,16 @@ class Config:
     embed_dim = 512
     n_blocks = 8
     n_heads = 8
-    seq_len = 128
+    seq_len = 32
 
     # Trainer configuration.
-    epochs = 16
-    batch_size = 128
-    learning_rate = 4e-4
+    epochs = 10
+    batch_size = 8
+    learning_rate = 1e-4
 
     print_loss_every_iter = 10
-    test_every_n_epochs = 10
     save_chkpt_every_n_epochs = 5
+    test_every_n_epochs = 1e10
 
     # Logging to wandb.
     logging = False
@@ -105,6 +105,6 @@ class GPT(nn.Module):
 
         loss = None
         if y is not None:
-            loss = F.cross_entropy(y_hat.view(-1, y_hat.size(-1)), y.view(-1), reduction="mean")
+            loss = F.cross_entropy(y_hat.view(-1, y_hat.size(-1)), y.view(-1))
 
         return y_hat, loss
